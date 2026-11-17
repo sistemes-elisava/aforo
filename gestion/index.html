@@ -1,0 +1,767 @@
+<!doctype html>
+<!-- Fluxus - web de gestion. Los datos de esta carpeta van CIFRADOS
+     (AES-256-GCM, clave sacada de la contrasena con PBKDF2-SHA256): sin la
+     contrasena no se puede leer nada. Ver fluxus/gestion.py. -->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Gestión del aforo · Fluxus</title>
+<style>
+  :root {
+    --fondo: #f4f6f9; --panel: #ffffff; --borde: #e2e6ec; --suave: #f7f9fb;
+    --tinta: #1f2733; --tinta-2: #5a6472; --tinta-3: #8a94a3;
+    --acento: #2a6fb0; --acento-suave: #e6f0f9;
+    --n1: #bcd4ea; --n2: #6ba3d6; --n3: #24628f;
+    --ok: #2f8a57; --aviso: #b7791f; --mal: #c0392b;
+    --sombra: 0 1px 3px rgba(16,24,40,.06), 0 1px 2px rgba(16,24,40,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fondo: #14171c; --panel: #1a1e25; --borde: #2a313b; --suave: #1f242c;
+      --tinta: #e4e9f0; --tinta-2: #9aa5b5; --tinta-3: #6b7686;
+      --acento: #5a9fe0; --acento-suave: #1d2b3a;
+      --n1: #3d5a78; --n2: #5e93cb; --n3: #9dcbf5;
+      --ok: #4cbb7f; --aviso: #e0a84a; --mal: #e5675a;
+      --sombra: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--fondo); color: var(--tinta);
+         font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+         line-height: 1.5; font-size: 15px; }
+  .oculto { display: none !important; }
+  a { color: var(--acento); }
+  button { font: inherit; cursor: pointer; }
+  h1 { font-size: 1.3rem; margin: 0; letter-spacing: -.2px; }
+  h2 { font-size: 1.1rem; margin: 0 0 4px; }
+  h3 { font-size: .98rem; margin: 18px 0 6px; }
+  .sub { color: var(--tinta-3); font-size: .85rem; }
+  .explica { color: var(--tinta-2); font-size: .9rem; margin: 0 0 14px; max-width: 70ch; }
+  .tarjeta { background: var(--panel); border: 1px solid var(--borde);
+             border-radius: 14px; padding: 18px 20px; box-shadow: var(--sombra);
+             margin-bottom: 14px; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* --- entrada --- */
+  #entrada { min-height: 100vh; display: flex; align-items: center;
+             justify-content: center; padding: 16px; }
+  #entrada .tarjeta { width: 100%; max-width: 400px; padding: 28px 26px; }
+  #entrada h1 { margin-bottom: 6px; }
+  label { display: block; font-size: .85rem; color: var(--tinta-2); margin: 16px 0 6px; }
+  input[type=password], input[type=search] {
+    width: 100%; padding: 11px 12px; border-radius: 10px; font: inherit;
+    border: 1px solid var(--borde); background: var(--suave); color: var(--tinta); }
+  input:focus { outline: 2px solid var(--acento); outline-offset: 1px; }
+  .casilla { display: flex; gap: 8px; align-items: center; font-size: .88rem;
+             color: var(--tinta-2); margin: 12px 0 18px; }
+  .boton { display: inline-flex; align-items: center; gap: 6px; border-radius: 9px;
+           padding: 8px 14px; border: 1px solid var(--borde); background: var(--panel);
+           color: var(--tinta); font-size: .88rem; text-decoration: none; white-space: nowrap; }
+  .boton:hover { border-color: var(--acento); }
+  .boton.primario { background: var(--acento); border-color: var(--acento); color: #fff; }
+  .boton.grande { width: 100%; justify-content: center; padding: 11px; font-size: 1rem; }
+  .boton.mini { padding: 4px 10px; font-size: .8rem; }
+  .boton[disabled] { opacity: .5; cursor: default; }
+  .error { color: var(--mal); font-size: .88rem; min-height: 1.3em; margin-top: 10px; }
+  .candado { font-size: .8rem; color: var(--tinta-3); margin-top: 16px; }
+
+  /* --- cabecera y pestanas --- */
+  .marco { max-width: 1040px; margin: 0 auto; padding: 18px 16px 40px; }
+  header.app { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center;
+               justify-content: space-between; margin-bottom: 12px; }
+  .acciones { display: flex; gap: 8px; flex-wrap: wrap; }
+  nav { display: flex; gap: 4px; border-bottom: 1px solid var(--borde);
+        margin-bottom: 18px; overflow-x: auto; scrollbar-width: none; }
+  nav button { background: none; border: 0; padding: 10px 14px; color: var(--tinta-2);
+               border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+  nav button.activa { color: var(--acento); border-bottom-color: var(--acento); font-weight: 600; }
+
+  /* --- cifras --- */
+  .cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 12px; margin-bottom: 14px; }
+  .cifra { background: var(--panel); border: 1px solid var(--borde); border-radius: 12px;
+           padding: 14px 16px; box-shadow: var(--sombra); }
+  .cifra .et { font-size: .72rem; font-weight: 700; letter-spacing: 1.1px;
+               text-transform: uppercase; color: var(--tinta-3); }
+  .cifra .val { font-size: 1.75rem; font-weight: 800; letter-spacing: -.5px; line-height: 1.2; }
+  .cifra .nota { font-size: .8rem; color: var(--tinta-2); }
+
+  /* --- graficas --- */
+  .grafica { width: 100%; overflow-x: auto; }
+  .grafica svg { display: block; min-width: 100%; }
+  .grafica .barra { fill: var(--n2); }
+  .grafica .barra:hover, .grafica .barra.sel { fill: var(--n3); }
+  .grafica .barra.curso { fill: var(--n1); }
+  .grafica text { fill: var(--tinta-3); font-size: 11px; }
+  .grafica .eje { stroke: var(--borde); }
+
+  /* --- tablas --- */
+  .tabla-env { overflow-x: auto; border: 1px solid var(--borde); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: .87rem; }
+  th, td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--borde);
+           white-space: nowrap; }
+  th { background: var(--suave); font-weight: 600; color: var(--tinta-2); position: sticky; top: 0; }
+  tr:last-child td { border-bottom: 0; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody tr:hover { background: var(--suave); }
+  .etq { display: inline-block; font-size: .72rem; font-weight: 600; padding: 1px 8px;
+         border-radius: 20px; background: var(--acento-suave); color: var(--acento); }
+  .etq.gris { background: var(--suave); color: var(--tinta-3); }
+
+  /* --- carpetas --- */
+  details.carpeta { background: var(--panel); border: 1px solid var(--borde);
+                    border-radius: 12px; margin-bottom: 10px; box-shadow: var(--sombra); }
+  details.carpeta > summary { list-style: none; cursor: pointer; padding: 12px 16px;
+                              display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  details.carpeta > summary::-webkit-details-marker { display: none; }
+  details.carpeta > summary::before { content: "\25B8"; color: var(--tinta-3);
+                                      transition: transform .15s; display: inline-block; }
+  details.carpeta[open] > summary::before { transform: rotate(90deg); }
+  details.carpeta > summary b { font-size: 1rem; }
+  details.carpeta .dentro { padding: 0 12px 12px; }
+  details.anio > summary b { font-size: 1.1rem; }
+  details.anio > .dentro > details.carpeta { box-shadow: none; }
+
+  .lista-inf { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+  .inf { background: var(--panel); border: 1px solid var(--borde); border-radius: 12px;
+         padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .inf .tit { font-weight: 600; }
+  .inf .fila-bot { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; }
+
+  pre.estado { background: var(--suave); border: 1px solid var(--borde); border-radius: 10px;
+               padding: 14px; overflow-x: auto; font-size: .85rem; margin: 0; }
+  dl.glosario { margin: 0; }
+  dl.glosario dt { font-weight: 600; margin-top: 12px; }
+  dl.glosario dd { margin: 2px 0 0; color: var(--tinta-2); font-size: .92rem; }
+
+  /* --- visor --- */
+  #visor { position: fixed; inset: 0; background: rgba(10,14,20,.55); z-index: 10;
+           display: flex; align-items: stretch; justify-content: center; padding: 18px; }
+  #visor .caja { background: var(--fondo); border-radius: 14px; width: 100%; max-width: 1100px;
+                 display: flex; flex-direction: column; overflow: hidden; }
+  #visor .cab { padding: 14px 18px; background: var(--panel); border-bottom: 1px solid var(--borde);
+                display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: space-between; }
+  #visor .hojas { display: flex; gap: 4px; padding: 10px 18px 0; background: var(--panel);
+                  border-bottom: 1px solid var(--borde); overflow-x: auto; }
+  #visor .hojas button { background: none; border: 0; padding: 8px 12px; color: var(--tinta-2);
+                         border-bottom: 2px solid transparent; white-space: nowrap; }
+  #visor .hojas button.activa { color: var(--acento); border-bottom-color: var(--acento); font-weight: 600; }
+  #visor .cuerpo { padding: 16px 18px; overflow: auto; flex: 1; }
+  #visor .cuerpo .tabla-env { max-height: none; }
+  .filtros { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  .filtros input { max-width: 260px; padding: 7px 10px; }
+  .chip { border: 1px solid var(--borde); background: var(--panel); color: var(--tinta-2);
+          border-radius: 20px; padding: 3px 11px; font-size: .8rem; }
+  .chip.activa { background: var(--acento); border-color: var(--acento); color: #fff; }
+  .cargando { color: var(--tinta-3); padding: 30px 0; text-align: center; }
+
+  @media (max-width: 640px) {
+    .marco { padding: 12px 12px 30px; }
+    #visor { padding: 0; }
+    #visor .caja { border-radius: 0; }
+    .ocultable { display: none; }
+    th, td { padding: 6px 8px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ ENTRADA ============ -->
+<section id="entrada">
+  <form class="tarjeta" id="form-entrada" autocomplete="off">
+    <h1>Gestión del aforo</h1>
+    <div class="sub" id="sala-entrada">Fluxus · registros y estadísticas</div>
+    <label for="clave">Contraseña</label>
+    <input type="password" id="clave" autocomplete="current-password" autofocus required>
+    <div class="casilla">
+      <input type="checkbox" id="recordar">
+      <label for="recordar" style="margin:0">Recordar en este dispositivo</label>
+    </div>
+    <button class="boton primario grande" id="btn-entrar" type="submit">Entrar</button>
+    <div class="error" id="error-entrada"></div>
+    <div class="candado">Los datos están cifrados y solo se descifran en tu
+      navegador. Sin la contraseña no se pueden leer, ni siquiera desde GitHub.
+      Marca «Recordar» solo en un dispositivo tuyo.</div>
+  </form>
+</section>
+
+<!-- ============ APLICACION ============ -->
+<div id="app" class="marco oculto">
+  <header class="app">
+    <div>
+      <h1 id="titulo-sala">Gestión del aforo</h1>
+      <div class="sub" id="actualizado"></div>
+    </div>
+    <div class="acciones">
+      <a class="boton" href="../" target="_blank" rel="noopener">Panel público ↗</a>
+      <button class="boton" id="btn-salir">Salir</button>
+    </div>
+  </header>
+
+  <nav id="pestanas">
+    <button data-p="resumen" class="activa">Resumen</button>
+    <button data-p="dias">Registros diarios</button>
+    <button data-p="informes">Informes</button>
+    <button data-p="equipo">Estado del equipo</button>
+    <button data-p="ayuda">Cómo leer los datos</button>
+  </nav>
+
+  <!-- RESUMEN -->
+  <section data-panel="resumen">
+    <div class="cifras" id="cifras"></div>
+    <div class="tarjeta">
+      <h2>Visitantes por día</h2>
+      <p class="explica">Cada barra es un día con registro (los días sin
+        actividad no salen). Pulsa una barra para abrir ese día. La barra
+        clara es el día en curso.</p>
+      <div class="grafica" id="graf-dias"></div>
+    </div>
+    <div class="tarjeta">
+      <h2>Últimos días</h2>
+      <div class="tabla-env" id="ultimos"></div>
+      <p style="margin:12px 0 0"><a href="#dias" data-ir="dias">Ver todos los registros →</a></p>
+    </div>
+  </section>
+
+  <!-- DIAS -->
+  <section data-panel="dias" class="oculto">
+    <p class="explica">Un Excel por cada día que el equipo estuvo en marcha,
+      ordenados por año y mes. <b>Ver</b> lo abre aquí mismo, con todas sus
+      hojas; <b>Excel</b> lo descarga. El día en curso se puede ver y bajar
+      en CSV (se abre con Excel); su Excel aparece aquí cuando termina el día.</p>
+    <div class="filtros">
+      <input type="search" id="buscar-dia" placeholder="Buscar fecha, p. ej. 2026-11 o 17/11">
+    </div>
+    <div id="arbol-dias"></div>
+  </section>
+
+  <!-- INFORMES -->
+  <section data-panel="informes" class="oculto">
+    <p class="explica">Informes ya hechos por el programa, cada uno comparado
+      con el periodo anterior (semana con la semana anterior, mes con el mes
+      anterior). El resumen general reúne una fila por día desde el principio.</p>
+    <h3>Resumen de todas las jornadas</h3>
+    <div class="lista-inf" id="inf-global"></div>
+    <h3>Informes mensuales</h3>
+    <div class="lista-inf" id="inf-meses"></div>
+    <h3>Informes semanales</h3>
+    <div class="lista-inf" id="inf-semanas"></div>
+  </section>
+
+  <!-- EQUIPO -->
+  <section data-panel="equipo" class="oculto">
+    <div class="tarjeta">
+      <h2>Último parte del equipo</h2>
+      <p class="explica">Lo escribe el propio mini PC cada vez que publica.
+        Si algo falla (la cámara, la publicación, el disco), sale aquí.</p>
+      <pre class="estado" id="estado-txt"></pre>
+    </div>
+    <div class="tarjeta">
+      <h2>Datos de esta publicación</h2>
+      <div class="tabla-env"><table><tbody id="datos-pub"></tbody></table></div>
+    </div>
+    <div class="tarjeta">
+      <h2>Qué significa el apartado RENDIMIENTO</h2>
+      <dl class="glosario">
+        <dt>cámara</dt><dd>Imágenes por segundo que da la cámara. Es el techo
+          de todo lo demás. Con poca luz muchas webcams bajan solas a la mitad.</dd>
+        <dt>detección</dt><dd>Cuántas veces por segundo se busca a las personas
+          (máximo 25). Por encima de 12-15 el conteo es fiable.</dd>
+        <dt>inferencia</dt><dd>Lo que tarda cada búsqueda. «ONNX directo» es el
+          modo rápido; «PyTorch» el lento.</dd>
+        <dt>ventana</dt><dd>Fluidez del vídeo en la pantalla del equipo. No
+          afecta al conteo.</dd>
+      </dl>
+    </div>
+  </section>
+
+  <!-- AYUDA -->
+  <section data-panel="ayuda" class="oculto">
+    <div class="tarjeta">
+      <h2>Cómo cuenta Fluxus</h2>
+      <p class="explica" style="margin-bottom:0">Una cámara mira la puerta y
+        el programa detecta a cada persona. Cuando alguien cruza la línea
+        dibujada en la puerta hacia dentro, cuenta una <b>entrada</b>; hacia
+        fuera, una <b>salida</b>. El <b>aforo</b> es cuántas personas hay
+        dentro en cada momento: entradas menos salidas. No se guardan imágenes
+        ni se identifica a nadie: solo horas y sentidos de paso.</p>
+    </div>
+    <div class="tarjeta">
+      <h2>Las cifras de cada día</h2>
+      <dl class="glosario">
+        <dt>Visitantes (entradas)</dt><dd>Veces que alguien entró. Si una
+          persona sale y vuelve a entrar, cuenta dos veces.</dd>
+        <dt>Salidas</dt><dd>Veces que alguien salió.</dd>
+        <dt>Balance</dt><dd>Entradas menos salidas. Lo ideal es 0 al final del
+          día; una diferencia pequeña es normal (grupos que cruzan juntos,
+          alguien que sale por otra puerta).</dd>
+        <dt>Aforo máximo y hora pico</dt><dd>El momento con más gente dentro
+          a la vez, y a qué hora fue.</dd>
+        <dt>Ocupación media</dt><dd>Personas dentro de media durante las horas
+          en marcha, teniendo en cuenta cuánto duró cada situación.</dd>
+        <dt>Horas activas</dt><dd>Tiempo que el equipo estuvo contando ese día.</dd>
+        <dt>Estancia media</dt><dd>Minutos que se queda una persona, de media.
+          Es una estimación; con menos de 5 entradas no se calcula («-»).</dd>
+        <dt>Correcciones y error medio</dt><dd>Veces que alguien corrigió el
+          aforo a mano en el equipo, y en cuántas personas se había desviado
+          el conteo de media. Sirve para saber cuánto fiarse de ese día.</dd>
+      </dl>
+    </div>
+    <div class="tarjeta">
+      <h2>Las hojas de cada Excel diario</h2>
+      <dl class="glosario">
+        <dt>Resumen</dt><dd>Las cifras del día, explicadas arriba.</dd>
+        <dt>Por hora</dt><dd>Entradas, salidas y aforo (mínimo, medio y
+          máximo) de cada hora. Aquí se ve también como gráfica.</dd>
+        <dt>Registro</dt><dd>Cada suceso, uno por fila, con su hora:
+          <ul style="margin:6px 0 0; padding-left:20px">
+            <li><b>Entrada / Salida</b>: una persona cruzó la puerta.</li>
+            <li><b>Inicio sesión / Fin sesión</b>: el programa se abrió o se cerró.</li>
+            <li><b>Correccion Manual / Reset</b>: alguien ajustó el aforo a mano.</li>
+            <li><b>Salida descartada</b>: se vio salir a alguien con el aforo ya
+              a 0; no se resta, porque el aforo no puede ser negativo.</li>
+          </ul></dd>
+        <dt>Columnas del registro</dt><dd><b>Método</b>: «real» si la cámara
+          vio a la persona cruzar la línea; «confirmado» si se la vio llegar a
+          la línea y, en la siguiente imagen, ya al otro lado (pasa con quien
+          va deprisa; cuenta igual); «manual» si lo puso una persona; y
+          «sistema» si es del propio programa. <b>Cara detectada</b>: si además se vio la cara (la
+          gente suele entrar de frente y salir de espaldas; cuenta igual).
+          <b>Track ID</b>: número que el programa da a cada persona mientras
+          la sigue; se repite en días distintos y no identifica a nadie.
+          <b>Sesión</b> y <b>Nodo</b>: cuándo se abrió el programa y en qué
+          equipo. <b>Detalle</b>: datos técnicos para revisar el conteo.</dd>
+      </dl>
+    </div>
+    <div class="tarjeta">
+      <h2>Cada cuánto se actualiza</h2>
+      <p class="explica" style="margin-bottom:0">El panel público, cada pocos
+        minutos. Esta web, cada media hora más o menos (para no llenar el
+        repositorio). Los datos de hoy son provisionales hasta que cierra el
+        día; el Excel definitivo aparece al día siguiente.</p>
+    </div>
+  </section>
+</div>
+
+<!-- ============ VISOR ============ -->
+<div id="visor" class="oculto" role="dialog" aria-modal="true">
+  <div class="caja">
+    <div class="cab">
+      <div><h2 id="visor-tit"></h2><div class="sub" id="visor-sub"></div></div>
+      <div class="acciones">
+        <button class="boton" id="visor-csv">Descargar esta hoja (CSV)</button>
+        <button class="boton primario" id="visor-xlsx">Descargar Excel</button>
+        <button class="boton" id="visor-cerrar" aria-label="Cerrar">✕</button>
+      </div>
+    </div>
+    <div class="hojas" id="visor-hojas"></div>
+    <div class="cuerpo" id="visor-cuerpo"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+(function () {
+  const AAD = new TextEncoder().encode("fluxus-gestion-1");
+  const RECUERDO = "fluxus-gestion-clave";
+  const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+  const DIAS_C = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
+  const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+                 "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+  const $ = (s, r) => (r || document).querySelector(s);
+  const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+
+  let claveAES = null, sal = null, indice = null;
+
+  // ---------------- utilidades ----------------
+  const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g,
+    (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+  const fmt = (n) => (typeof n === "number" ? n.toLocaleString("es-ES") : (n == null || n === "" ? "-" : String(n)));
+  const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+  const hex = (u8) => Array.from(u8, (b) => b.toString(16).padStart(2, "0")).join("");
+  const dehex = (h) => new Uint8Array(h.match(/../g).map((x) => parseInt(x, 16)));
+  function fecha(iso) { const [a, m, d] = iso.split("-").map(Number); return new Date(a, m - 1, d); }
+  function fechaLarga(iso) { const f = fecha(iso);
+    return `${DIAS[f.getDay()]} ${f.getDate()} de ${MESES[f.getMonth()]} de ${f.getFullYear()}`; }
+  function fechaCorta(iso) { const f = fecha(iso);
+    return `${DIAS_C[f.getDay()]} ${f.getDate()}/${f.getMonth() + 1}`; }
+  function tam(b) { return b > 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB"; }
+  function haceCuanto(d) {
+    const min = Math.round((Date.now() - d.getTime()) / 60000);
+    if (min < 1) return "hace un momento";
+    if (min < 60) return `hace ${min} min`;
+    const h = Math.floor(min / 60);
+    if (h < 24) return `hace ${h} h ${min % 60} min`;
+    return `hace ${Math.floor(h / 24)} días`;
+  }
+
+  // ---------------- cifrado ----------------
+  async function hmac(claveBruta, texto) {
+    const k = await crypto.subtle.importKey("raw", claveBruta, {name: "HMAC", hash: "SHA-256"}, false, ["sign"]);
+    return new Uint8Array(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(texto)));
+  }
+  async function maestraDe(contrasena) {
+    const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(contrasena), "PBKDF2", false, ["deriveBits"]);
+    const bits = await crypto.subtle.deriveBits({name: "PBKDF2", hash: "SHA-256",
+      salt: b64(sal.sal), iterations: sal.iteraciones}, base, 256);
+    return new Uint8Array(bits);
+  }
+  async function prepararClave(maestra) {
+    const kc = await hmac(maestra, "fluxus-gestion-cifrado");
+    claveAES = await crypto.subtle.importKey("raw", kc, "AES-GCM", false, ["decrypt"]);
+  }
+  async function bajar(nombre, version) {
+    const r = await fetch(`datos/${nombre}?v=${encodeURIComponent(version || Date.now())}`, {cache: "no-store"});
+    if (!r.ok) throw new Error(`No se encontró ${nombre} (${r.status})`);
+    const b = new Uint8Array(await r.arrayBuffer());
+    return new Uint8Array(await crypto.subtle.decrypt(
+      {name: "AES-GCM", iv: b.slice(0, 12), additionalData: AAD}, claveAES, b.slice(12)));
+  }
+  async function descomprimir(u8) {
+    const s = new Blob([u8]).stream().pipeThrough(new DecompressionStream("gzip"));
+    return JSON.parse(await new Response(s).text());
+  }
+
+  // ---------------- entrada ----------------
+  async function cargarSal() {
+    const r = await fetch(`datos/sal.json?t=${Date.now()}`, {cache: "no-store"});
+    if (!r.ok) throw new Error("sin-datos");
+    sal = await r.json();
+  }
+  async function abrirCon(maestra) {
+    await prepararClave(maestra);
+    indice = await descomprimir(await bajar("indice.bin", Date.now()));
+  }
+  function guardarRecuerdo(maestra) {
+    try { localStorage.setItem(RECUERDO, JSON.stringify({id: sal.id, k: hex(maestra)})); } catch (e) {}
+  }
+  function leerRecuerdo() {
+    try { const r = JSON.parse(localStorage.getItem(RECUERDO) || "null");
+      return r && r.id === sal.id ? dehex(r.k) : null; } catch (e) { return null; }
+  }
+  function olvidar() { try { localStorage.removeItem(RECUERDO); } catch (e) {} }
+
+  $("#form-entrada").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const err = $("#error-entrada"), btn = $("#btn-entrar");
+    err.textContent = ""; btn.disabled = true; btn.textContent = "Comprobando…";
+    try {
+      if (!sal) await cargarSal();
+      const maestra = await maestraDe($("#clave").value);
+      try { await abrirCon(maestra); }
+      catch (e) { if (e && e.name === "OperationError") throw new Error("mala"); throw e; }
+      if ($("#recordar").checked) guardarRecuerdo(maestra); else olvidar();
+      $("#clave").value = "";
+      mostrarApp();
+    } catch (e) {
+      err.textContent = e.message === "mala" ? "Contraseña incorrecta."
+        : e.message === "sin-datos" ? "Todavía no hay datos publicados. El equipo los sube cada media hora."
+        : "No se pudo abrir: " + e.message;
+    } finally { btn.disabled = false; btn.textContent = "Entrar"; }
+  });
+  $("#btn-salir").addEventListener("click", () => { olvidar(); location.hash = ""; location.reload(); });
+
+  // ---------------- aplicacion ----------------
+  function mostrarApp() {
+    $("#entrada").classList.add("oculto");
+    $("#app").classList.remove("oculto");
+    const sala = (indice.panel && indice.panel.sala) || "la sala";
+    $("#titulo-sala").textContent = "Gestión del aforo · " + sala;
+    document.title = "Gestión · " + sala;
+    const g = new Date(indice.generado);
+    $("#actualizado").textContent = `Datos del ${g.toLocaleDateString("es-ES")} a las ` +
+      `${g.toLocaleTimeString("es-ES", {hour: "2-digit", minute: "2-digit"})} (${haceCuanto(g)}). ` +
+      `Se actualiza cada ${indice.cada_min || 30} min.`;
+    pintarResumen(); pintarDias(); pintarInformes(); pintarEquipo();
+    irA((location.hash || "#resumen").slice(1));
+  }
+  function irA(p) {
+    if (!$(`section[data-panel="${p}"]`)) p = "resumen";
+    $$("section[data-panel]").forEach((s) => s.classList.toggle("oculto", s.dataset.panel !== p));
+    $$("#pestanas button").forEach((b) => b.classList.toggle("activa", b.dataset.p === p));
+    const act = $("#pestanas button.activa"), nav = $("#pestanas");
+    if (act) nav.scrollLeft = act.offsetLeft - (nav.clientWidth - act.offsetWidth) / 2;
+    if (location.hash !== "#" + p) history.replaceState(null, "", "#" + p);
+  }
+  $("#pestanas").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) irA(b.dataset.p); });
+  window.addEventListener("hashchange", () => { if (indice) irA(location.hash.slice(1)); });
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest("[data-ir]"); if (a) { e.preventDefault(); irA(a.dataset.ir); window.scrollTo(0, 0); }
+    const v = e.target.closest("[data-ver]"); if (v) abrirVisor(v.dataset.ver);
+    const d = e.target.closest("[data-bajar]"); if (d) descargarExcel(d.dataset.bajar, d);
+  });
+
+  // Todo lo que se puede abrir, por una clave corta.
+  const elementos = {};
+  function registrar(clave, e, titulo, sub) { elementos[clave] = Object.assign({titulo, sub}, e); return clave; }
+
+  function botones(clave, e, conCsv) {
+    const ver = `<button class="boton mini" data-ver="${clave}">Ver</button>`;
+    if (e.xlsx) return ver + ` <button class="boton mini" data-bajar="${clave}" title="${tam(e.tam_xlsx || 0)}">Excel ↓</button>`;
+    return ver + (conCsv ? ` <span class="etq gris" title="El Excel se publica cuando termina el día">en curso</span>` : "");
+  }
+
+  // ---------- resumen ----------
+  function pintarResumen() {
+    const dias = indice.dias || [];
+    const hoy = dias.find((d) => d.fecha === indice.hoy);
+    const mes = indice.hoy.slice(0, 7);
+    const delMes = dias.filter((d) => d.fecha.startsWith(mes));
+    const totMes = delMes.reduce((s, d) => s + (+d.visitantes || 0), 0);
+    const cerrados = delMes.filter((d) => !d.en_curso && (+d.visitantes || 0) > 0);
+    const media = cerrados.length ? Math.round(cerrados.reduce((s, d) => s + (+d.visitantes || 0), 0) / cerrados.length) : null;
+    const top = dias.reduce((m, d) => ((+d.visitantes || 0) > (+((m || {}).visitantes) || -1) ? d : m), null);
+    const maxAforo = dias.reduce((m, d) => ((+d.aforo_max || 0) > (+((m || {}).aforo_max) || -1) ? d : m), null);
+    const c = [];
+    c.push(`<div class="cifra"><div class="et">Ahora en la sala</div><div class="val num" id="ahora-val">…</div><div class="nota" id="ahora-nota">del panel público</div></div>`);
+    c.push(`<div class="cifra"><div class="et">Hoy</div><div class="val num">${hoy ? fmt(hoy.visitantes) : "0"}</div><div class="nota">visitantes${hoy && hoy.aforo_max != null ? " · máx. " + fmt(hoy.aforo_max) + " a la vez" : ""}</div></div>`);
+    c.push(`<div class="cifra"><div class="et">Este mes</div><div class="val num">${fmt(totMes)}</div><div class="nota">visitantes en ${delMes.length} día${delMes.length === 1 ? "" : "s"}${media != null ? " · media " + fmt(media) + "/día" : ""}</div></div>`);
+    if (top) c.push(`<div class="cifra"><div class="et">Día con más visitantes</div><div class="val num">${fmt(top.visitantes)}</div><div class="nota">${fechaCorta(top.fecha)}/${top.fecha.slice(0, 4)}</div></div>`);
+    if (maxAforo) c.push(`<div class="cifra"><div class="et">Más gente a la vez</div><div class="val num">${fmt(maxAforo.aforo_max)}</div><div class="nota">${fechaCorta(maxAforo.fecha)} a las ${esc(String(maxAforo.hora_pico || "").slice(0, 5))}</div></div>`);
+    $("#cifras").innerHTML = c.join("");
+    fetch(`../aforo.json?t=${Date.now()}`, {cache: "no-store"}).then((r) => r.json()).then((a) => {
+      $("#ahora-val").textContent = a.caducado ? "-" : fmt(a.aforo);
+      $("#ahora-nota").textContent = a.caducado ? "el equipo no está publicando ahora" : "personas dentro ahora mismo";
+    }).catch(() => { $("#ahora-val").textContent = "-"; $("#ahora-nota").textContent = "no se pudo leer el panel"; });
+
+    // grafica de barras
+    const serie = dias.slice(0, 60).reverse();
+    // Las barras se reparten el ancho que haya (entre 22 y 56 px cada una);
+    // si no caben, la grafica se desplaza de lado y empieza por el final.
+    const disponible = Math.max(320, ($("#graf-dias").clientWidth || 600) - 4);
+    const sep = Math.max(22, Math.min(56, (disponible - 44) / Math.max(1, serie.length)));
+    const barra = Math.round(sep * 0.7);
+    const cadaN = Math.ceil(44 / sep);
+    const ancho = Math.max(Math.round(serie.length * sep + 44), disponible), alto = 190, base = 160;
+    const max = Math.max(1, ...serie.map((d) => +d.visitantes || 0));
+    const paso = Math.pow(10, Math.floor(Math.log10(max))) * (max / Math.pow(10, Math.floor(Math.log10(max))) > 5 ? 2 : 1);
+    let svg = `<svg viewBox="0 0 ${ancho} ${alto}" width="${ancho}" height="${alto}" role="img" aria-label="Visitantes por día">`;
+    for (let v = 0; v <= max; v += paso) {
+      const y = base - (v / max) * 140;
+      svg += `<line class="eje" x1="34" x2="${ancho}" y1="${y}" y2="${y}"/><text x="28" y="${y + 4}" text-anchor="end">${v}</text>`;
+    }
+    serie.forEach((d, i) => {
+      const v = +d.visitantes || 0, h = Math.max(v ? 2 : 0, (v / max) * 140), x = 42 + i * sep;
+      registrar("d:" + d.fecha, d, fechaLarga(d.fecha), d.en_curso ? "Día en curso: datos provisionales" : "");
+      svg += `<rect class="barra${d.en_curso ? " curso" : ""}" data-ver="d:${d.fecha}" x="${x}" y="${base - h}" width="${barra}" height="${h}" rx="2" style="cursor:pointer"><title>${esc(fechaLarga(d.fecha))}: ${v} visitantes</title></rect>`;
+      const f = fecha(d.fecha);
+      if ((serie.length - 1 - i) % cadaN === 0)
+        svg += `<text x="${x + barra / 2}" y="${base + 16}" text-anchor="middle">${f.getDate()}/${f.getMonth() + 1}</text>`;
+    });
+    svg += `<line class="eje" x1="34" x2="${ancho}" y1="${base}" y2="${base}"/></svg>`;
+    $("#graf-dias").innerHTML = serie.length ? svg : `<p class="sub">Todavía no hay días con registro.</p>`;
+    const g = $("#graf-dias"); g.scrollLeft = g.scrollWidth;
+
+    $("#ultimos").innerHTML = tablaDias(dias.slice(0, 7));
+  }
+
+  function tablaDias(lista) {
+    let h = `<table><thead><tr><th>Día</th><th class="n">Visitantes</th><th class="n ocultable">Salidas</th>
+      <th class="n">Máx. a la vez</th><th class="ocultable">Hora pico</th><th class="n ocultable">Estancia media</th><th></th></tr></thead><tbody>`;
+    for (const d of lista) {
+      const k = registrar("d:" + d.fecha, d, fechaLarga(d.fecha), d.en_curso ? "Día en curso: datos provisionales" : "");
+      h += `<tr><td>${esc(fechaCorta(d.fecha))}${d.en_curso ? ' <span class="etq">hoy</span>' : ""}</td>
+        <td class="n">${fmt(d.visitantes)}</td><td class="n ocultable">${fmt(d.salidas)}</td>
+        <td class="n">${fmt(d.aforo_max)}</td><td class="ocultable">${esc(String(d.hora_pico || "-").slice(0, 5))}</td>
+        <td class="n ocultable">${d.estancia_min != null && d.estancia_min !== "-" ? fmt(d.estancia_min) + " min" : "-"}</td>
+        <td style="text-align:right">${botones(k, d, true)}</td></tr>`;
+    }
+    return h + "</tbody></table>";
+  }
+
+  // ---------- dias por carpetas ----------
+  function pintarDias(filtro) {
+    const dias = (indice.dias || []).filter((d) => {
+      if (!filtro) return true;
+      const f = fecha(d.fecha), alt = `${f.getDate()}/${f.getMonth() + 1}/${f.getFullYear()} ${fechaLarga(d.fecha)}`;
+      return d.fecha.includes(filtro) || alt.toLowerCase().includes(filtro.toLowerCase());
+    });
+    if (!dias.length) { $("#arbol-dias").innerHTML = `<p class="sub">No hay ningún día que coincida.</p>`; return; }
+    const anios = {};
+    for (const d of dias) ((anios[d.fecha.slice(0, 4)] ||= {})[d.fecha.slice(5, 7)] ||= []).push(d);
+    let h = "", primero = true;
+    for (const a of Object.keys(anios).sort().reverse()) {
+      const meses = anios[a], todos = Object.values(meses).flat();
+      const tot = todos.reduce((s, d) => s + (+d.visitantes || 0), 0);
+      h += `<details class="carpeta anio" ${primero || filtro ? "open" : ""}><summary><b>${a}</b>
+        <span class="sub">${todos.length} días · ${fmt(tot)} visitantes</span></summary><div class="dentro">`;
+      for (const m of Object.keys(meses).sort().reverse()) {
+        const l = meses[m], t = l.reduce((s, d) => s + (+d.visitantes || 0), 0);
+        const mx = Math.max(...l.map((d) => +d.aforo_max || 0));
+        h += `<details class="carpeta" ${primero || filtro ? "open" : ""}><summary><b>${MESES[+m - 1][0].toUpperCase() + MESES[+m - 1].slice(1)}</b>
+          <span class="sub">${l.length} día${l.length === 1 ? "" : "s"} · ${fmt(t)} visitantes · máx. ${mx} a la vez</span></summary>
+          <div class="dentro"><div class="tabla-env">${tablaDias(l)}</div></div></details>`;
+        primero = false;
+      }
+      h += `</div></details>`;
+    }
+    $("#arbol-dias").innerHTML = h;
+  }
+  $("#buscar-dia").addEventListener("input", (e) => pintarDias(e.target.value.trim()));
+
+  // ---------- informes ----------
+  function tarjetaInf(clave, e, titulo, nota) {
+    registrar(clave, e, titulo, nota);
+    return `<div class="inf"><div class="tit">${esc(titulo)}</div><div class="sub">${esc(nota)}</div>
+      <div class="fila-bot">${botones(clave, e)}</div></div>`;
+  }
+  function pintarInformes() {
+    $("#inf-global").innerHTML = indice.global
+      ? tarjetaInf("g", indice.global, "Resumen de todas las jornadas", "Una fila por día, desde el primero")
+      : `<p class="sub">Aún no hay resumen.</p>`;
+    $("#inf-meses").innerHTML = (indice.meses || []).map((m) =>
+      tarjetaInf(`m:${m.anio}-${m.mes}`, m, m.titulo, "Comparado con el mes anterior")).join("") || `<p class="sub">Aún no hay informes mensuales.</p>`;
+    $("#inf-semanas").innerHTML = (indice.semanas || []).map((s) =>
+      tarjetaInf(`s:${s.anio}-${s.semana}`, s, s.titulo, "Comparada con la semana anterior")).join("") || `<p class="sub">Aún no hay informes semanales.</p>`;
+  }
+
+  // ---------- equipo ----------
+  function pintarEquipo() {
+    $("#estado-txt").textContent = indice.estado || "El equipo todavía no ha enviado su parte.";
+    const g = new Date(indice.generado);
+    const filas = [["Publicado", `${g.toLocaleString("es-ES")} (${haceCuanto(g)})`],
+      ["Equipo", indice.nodo], ["Versión del programa", indice.programa || "-"],
+      ["Días con registro", (indice.dias || []).length],
+      ["Primer día", (indice.dias || []).length ? fechaLarga(indice.dias[indice.dias.length - 1].fecha) : "-"]];
+    $("#datos-pub").innerHTML = filas.map(([a, b]) => `<tr><th style="position:static">${esc(a)}</th><td>${esc(b)}</td></tr>`).join("");
+  }
+
+  // ---------- visor ----------
+  let visorActual = null;
+  async function abrirVisor(clave) {
+    const e = elementos[clave]; if (!e) return;
+    visorActual = {e, hojas: null, hoja: 0, filtro: "", evento: null};
+    $("#visor-tit").textContent = e.titulo;
+    $("#visor-sub").textContent = e.sub || (e.archivo || "");
+    $("#visor-xlsx").classList.toggle("oculto", !e.xlsx);
+    $("#visor-hojas").innerHTML = "";
+    $("#visor-cuerpo").innerHTML = `<div class="cargando">Descifrando…</div>`;
+    $("#visor").classList.remove("oculto");
+    document.body.style.overflow = "hidden";
+    try {
+      const datos = await descomprimir(await bajar(e.vista, indice.generado));
+      visorActual.hojas = datos.hojas || [];
+      const reg = visorActual.hojas.findIndex((h) => h.nombre === "Resumen");
+      visorActual.hoja = reg >= 0 ? reg : 0;
+      pintarVisor();
+    } catch (err) {
+      $("#visor-cuerpo").innerHTML = `<div class="cargando">No se pudo abrir: ${esc(err.message)}</div>`;
+    }
+  }
+  function cerrarVisor() { $("#visor").classList.add("oculto"); document.body.style.overflow = ""; visorActual = null; }
+  $("#visor-cerrar").addEventListener("click", cerrarVisor);
+  $("#visor").addEventListener("click", (e) => { if (e.target.id === "visor") cerrarVisor(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && visorActual) cerrarVisor(); });
+  $("#visor-hojas").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    visorActual.hoja = +b.dataset.h; visorActual.filtro = ""; visorActual.evento = null; pintarVisor();
+  });
+
+  function pintarVisor() {
+    const v = visorActual, hs = v.hojas;
+    $("#visor-hojas").innerHTML = hs.map((h, i) => `<button data-h="${i}" class="${i === v.hoja ? "activa" : ""}">${esc(h.nombre)}</button>`).join("");
+    const h = hs[v.hoja];
+    if (!h) { $("#visor-cuerpo").innerHTML = `<div class="cargando">Este fichero no tiene datos.</div>`; return; }
+    const filas = h.filas, cab = filas[0] || [];
+    const esTabla = cab.length > 2 && cab.every((c) => typeof c === "string" && c);
+    let html = "";
+    if (h.nombre === "Por hora" && esTabla) html += graficaHoras(filas);
+    if (h.nombre === "Registro" && esTabla) {
+      const iEv = cab.indexOf("Evento"), cuenta = {};
+      filas.slice(1).forEach((f) => { cuenta[f[iEv]] = (cuenta[f[iEv]] || 0) + 1; });
+      html += `<div class="filtros"><input type="search" id="visor-buscar" placeholder="Buscar en el registro (hora, evento…)" value="${esc(v.filtro)}">
+        <button class="chip ${v.evento == null ? "activa" : ""}" data-ev="">Todos (${filas.length - 1})</button>` +
+        Object.keys(cuenta).sort().map((k) => `<button class="chip ${v.evento === k ? "activa" : ""}" data-ev="${esc(k)}">${esc(k)} (${cuenta[k]})</button>`).join("") + `</div>`;
+    }
+    let cuerpo = esTabla ? filas.slice(1) : filas;
+    if (h.nombre === "Registro" && esTabla) {
+      const iEv = cab.indexOf("Evento"), q = v.filtro.toLowerCase();
+      cuerpo = cuerpo.filter((f) => (v.evento == null || f[iEv] === v.evento) &&
+        (!q || f.some((c) => String(c == null ? "" : c).toLowerCase().includes(q))));
+    }
+    const ancho = Math.max(...filas.map((f) => f.length));
+    const numCol = Array.from({length: ancho}, (_, i) => cuerpo.length > 0 && cuerpo.every((f) => f[i] == null || typeof f[i] === "number"));
+    html += `<div class="tabla-env"><table>`;
+    if (esTabla) html += `<thead><tr>${cab.map((c, i) => `<th class="${numCol[i] ? "n" : ""}">${esc(c)}</th>`).join("")}</tr></thead>`;
+    html += `<tbody>${cuerpo.map((f) => `<tr>${Array.from({length: ancho}, (_, i) => {
+      const c = f[i]; const n = typeof c === "number";
+      return `<td class="${n ? "n" : ""}">${n ? fmt(c) : esc(c == null ? "" : c)}</td>`; }).join("")}</tr>`).join("")}</tbody></table></div>`;
+    if (h.recortada) html += `<p class="sub">Se muestran las primeras filas; el Excel completo tiene todas.</p>`;
+    if (!cuerpo.length) html += `<p class="sub">Nada coincide con el filtro.</p>`;
+    $("#visor-cuerpo").innerHTML = html;
+    const b = $("#visor-buscar");
+    if (b) { b.addEventListener("input", () => { v.filtro = b.value; const pos = b.selectionStart; pintarVisor();
+      const nb = $("#visor-buscar"); nb.focus(); nb.setSelectionRange(pos, pos); }); }
+    $$(".chip", $("#visor-cuerpo")).forEach((c) => c.addEventListener("click", () => {
+      v.evento = c.dataset.ev === "" ? null : c.dataset.ev; pintarVisor(); }));
+  }
+
+  function graficaHoras(filas) {
+    const cab = filas[0], iH = cab.indexOf("Hora"), iE = cab.indexOf("Entradas"), iM = cab.indexOf("Aforo max");
+    const datos = filas.slice(1).filter((f) => f[iH]);
+    if (!datos.length || iE < 0) return "";
+    const max = Math.max(1, ...datos.map((f) => Math.max(+f[iE] || 0, iM >= 0 ? +f[iM] || 0 : 0)));
+    const ancho = Math.max(datos.length * 44 + 40, 320), base = 150;
+    let s = `<div class="tarjeta" style="padding:14px"><div class="sub" style="margin-bottom:6px">
+      <span style="display:inline-block;width:10px;height:10px;background:var(--n2);border-radius:2px"></span> entradas en esa hora &nbsp;
+      <span style="display:inline-block;width:10px;height:10px;background:var(--n3);border-radius:2px"></span> máximo de personas dentro</div>
+      <div class="grafica"><svg viewBox="0 0 ${ancho} 175" width="${ancho}" height="175">`;
+    datos.forEach((f, i) => {
+      const x = 40 + i * 44, e = +f[iE] || 0, m = iM >= 0 ? +f[iM] || 0 : 0;
+      const he = (e / max) * 130, hm = (m / max) * 130;
+      s += `<rect class="barra" x="${x}" y="${base - he}" width="16" height="${he}" rx="2"><title>${esc(f[iH])}: ${e} entradas</title></rect>`;
+      s += `<rect x="${x + 18}" y="${base - hm}" width="16" height="${hm}" rx="2" style="fill:var(--n3)"><title>${esc(f[iH])}: máximo ${m} dentro</title></rect>`;
+      s += `<text x="${x + 17}" y="${base + 16}" text-anchor="middle">${esc(String(f[iH]).slice(0, 2))}h</text>`;
+    });
+    return s + `<line class="eje" x1="34" x2="${ancho}" y1="${base}" y2="${base}"/><text x="28" y="${base - 126}" text-anchor="end">${max}</text></svg></div></div>`;
+  }
+
+  // ---------- descargas ----------
+  function guardar(blob, nombre) {
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nombre;
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  }
+  async function descargarExcel(clave, boton) {
+    const e = elementos[clave]; if (!e || !e.xlsx) return;
+    const txt = boton ? boton.textContent : "";
+    if (boton) { boton.disabled = true; boton.textContent = "Descifrando…"; }
+    try {
+      const u8 = await bajar(e.xlsx, indice.generado);
+      guardar(new Blob([u8], {type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}), e.archivo || "registro.xlsx");
+    } catch (err) { alert("No se pudo descargar: " + err.message); }
+    finally { if (boton) { boton.disabled = false; boton.textContent = txt; } }
+  }
+  $("#visor-xlsx").addEventListener("click", (ev) => {
+    const k = Object.keys(elementos).find((k) => elementos[k] === visorActual.e); descargarExcel(k, ev.currentTarget);
+  });
+  $("#visor-csv").addEventListener("click", () => {
+    const v = visorActual; if (!v || !v.hojas) return;
+    const h = v.hojas[v.hoja];
+    // Punto y coma y BOM: asi lo abre bien el Excel en espanol.
+    const csv = "﻿" + h.filas.map((f) => f.map((c) => {
+      if (c == null) return ""; let s = typeof c === "number" ? String(c).replace(".", ",") : String(c);
+      return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(";")).join("\r\n");
+    const base = (v.e.archivo || (v.e.fecha ? `registro_personas_${v.e.fecha}` : "informe")).replace(/\.xlsx$/, "");
+    guardar(new Blob([csv], {type: "text/csv;charset=utf-8"}), `${base}_${h.nombre.replace(/\s+/g, "_")}.csv`);
+  });
+
+  // ---------------- arranque ----------------
+  (async function () {
+    if (!window.crypto || !crypto.subtle || typeof DecompressionStream === "undefined") {
+      $("#error-entrada").textContent = "Este navegador es demasiado antiguo para abrir los datos cifrados. Usa Chrome, Edge, Firefox o Safari actualizados.";
+      $("#btn-entrar").disabled = true; return;
+    }
+    try { await cargarSal(); } catch (e) { return; }
+    const m = leerRecuerdo();
+    if (m) {
+      try { await abrirCon(m); mostrarApp(); return; }
+      catch (e) { olvidar(); }
+    }
+  })();
+})();
+</script>
+</body>
+</html>
